@@ -161,7 +161,13 @@ export default function Home() {
 
   const filtered = useMemo(() => {
     let list = merged
-    if (filter !== "all") list = list.filter(m => m.status === filter)
+    if (filter !== "all") {
+      if (filter === "captured") {
+        list = list.filter(m => m.status === "captured" || m.status === "ree_verified")
+      } else {
+        list = list.filter(m => m.status === filter)
+      }
+    }
     if (search) list = list.filter(m =>
       m.question?.toLowerCase().includes(search.toLowerCase()) ||
       m.market_id?.toLowerCase().includes(search.toLowerCase())
