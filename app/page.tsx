@@ -409,7 +409,7 @@ export default function Home() {
                   <Row label="Source used"    value={sel.capture_source || "—"} />
                   <Row label="Evidence hash"  value={shortHash(sel.evidence_hash)} mono />
                 <Row label="IPFS CID"       value={sel.ipfs_cid ? shortHash(sel.ipfs_cid) : "—"} mono
-                    link={sel.ipfs_cid ? `https://ipfs.io/ipfs/${sel.ipfs_cid}` : undefined}
+                    link={sel.ipfs_cid ? `https://gateway.pinata.cloud/ipfs/${sel.ipfs_cid}` : undefined}
                     color={sel.ipfs_cid ? C.green : undefined}
                   />
                   {sel.raw_evidence && (
