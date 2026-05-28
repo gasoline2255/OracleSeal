@@ -61,14 +61,6 @@ SOURCE_BASE_URLS = {
     "wikipedia": "https://www.wikipedia.org",
 }
 
-COINGECKO_IDS = {
-    "BTC": "bitcoin", "ETH": "ethereum", "SOL": "solana",
-    "BNB": "binancecoin", "XRP": "ripple", "ADA": "cardano",
-    "AVAX": "avalanche-2", "DOGE": "dogecoin", "HYPE": "hyperliquid",
-    "WIF": "dogwifcoin", "BONK": "bonk", "ONDO": "ondo-finance",
-    "SUI": "sui", "APT": "aptos", "ARB": "arbitrum",
-    "OP": "optimism", "NEAR": "near", "PEPE": "pepe",
-}
 
 SKIP_GROQ_SOURCES = {"twitter", "x (", "x.com", "reddit", "instagram", "tiktok"}
 
@@ -114,91 +106,7 @@ def call_groq(system_prompt: str, user_prompt: str) -> Optional[str]:
         print(f"[watcher] Groq failed: {e}")
         return None
 
-def classify_market(question: str, prompt_context: str, data_sources: list) -> dict:
-    if not GROQ_API_KEY:
-        return {
-            "market_type": "unknown", "is_price_based": False,
-            "asset": None, "threshold": None,
-            "event_start_date": None, "event_end_date": None,
-            "capture_strategy": "at_close", "confidence": "low"
-        }
-    system = (
-        "You are a prediction market classifier. Return ONLY valid JSON, no markdown.\n"
-        "market_type: crypto_price | crypto_price_range | sports | politics | event | culture | unknown\n"
-        "is_price_based: true only if asking about asset price vs threshold\n"
-        "asset: SHORT ticker (BTC, ETH, SOL) or null\n"
-        "capture_strategy: at_close | historical | event_time\n"
-        "event_start_date: YYYY-MM-DD if question refers to specific date range start, else null\n"
-        "event_end_date: YYYY-MM-DD if question refers to specific date range end, else null\n"
-        "capture_notes: brief explanation of what data to fetch and from where"
-    )
-    user = (
-        f"Question: {question}\n"
-        f"Prompt context: {prompt_context[:400]}\n"
-        f"Listed data sources: {', '.join(data_sources)}\n\n"
-        "Return JSON with all fields above."
-    )
-    raw = call_groq(system, user)
-    if not raw:
-        return {
-            "market_type": "unknown", "is_price_based": False,
-            "asset": None, "threshold": None,
-            "event_start_date": None, "event_end_date": None,
-            "capture_strategy": "at_close", "confidence": "low"
-        }
-    try:
-        clean = raw.replace("```json", "").replace("```", "").strip()
-        return json.loads(re.search(r"\{[\s\S]*\}", clean).group(0))
-    except Exception:
-        return {
-            "market_type": "unknown", "is_price_based": False,
-            "asset": None, "threshold": None,
-            "event_start_date": None, "event_end_date": None,
-            "capture_strategy": "at_close", "confidence": "low"
-        }
-
-def resolve_capture_dates(classification: dict, close_time: datetime) -> list:
-    strategy = classification.get("capture_strategy", "at_close")
-    if strategy == "historical" and classification.get("event_start_date"):
-        start = datetime.strptime(classification["event_start_date"], "%Y-%m-%d").date()
-        end_str = classification.get("event_end_date")
-        end = datetime.strptime(end_str, "%Y-%m-%d").date() if end_str else start
-        dates = []
-        current = start
-        while current <= end:
-            dates.append(current)
-            current += timedelta(days=1)
-        return dates
-    return [close_time.date()]
-
 # ─── Data fetchers ────────────────────────────────────────────────────────────
-
-def fetch_crypto_price_coingecko(symbol: str, date_str: str) -> dict:
-    coin_id = COINGECKO_IDS.get(symbol.upper())
-    if not coin_id:
-        return {"error": f"Unknown token: {symbol}", "symbol": symbol, "date": date_str}
-    y, m, d = date_str.split("-")
-    cg_date = f"{d}-{m}-{y}"
-    print(f"[watcher] CoinGecko: {symbol} for {cg_date}")
-    try:
-        r = requests.get(
-            f"https://api.coingecko.com/api/v3/coins/{coin_id}/history",
-            params={"date": cg_date, "localization": "false"}, timeout=10,
-        )
-        r.raise_for_status()
-        data = r.json()
-        md = data.get("market_data", {})
-        price = md.get("current_price", {}).get("usd")
-        high  = md.get("high_24h", {}).get("usd")
-        low   = md.get("low_24h", {}).get("usd")
-        print(f"[watcher] {symbol} on {date_str}: ${price}")
-        return {
-            "symbol": symbol, "date": date_str,
-            "close_usd": price, "high_usd": high, "low_usd": low,
-            "source": "CoinGecko", "fetched_at": now_iso(),
-        }
-    except Exception as e:
-        return {"error": str(e), "symbol": symbol, "date": date_str}
 
 def fetch_from_source(source: str, question: str, close_time: str) -> dict:
     src_lower = source.lower().strip()
@@ -434,13 +342,24 @@ def pin_to_ipfs(data: dict, name: str) -> Optional[str]:
     if not PINATA_JWT:
         return None
     try:
-        r = requests.post("https://uploads.pinata.cloud/v3/files",
+        r = requests.post(
+            "https://uploads.pinata.cloud/v3/files",
             headers={"Authorization": f"Bearer {PINATA_JWT}"},
             files={"file": (f"{name}.json", json.dumps(data), "application/json")},
-            timeout=30)
-        cid = r.json()["data"]["cid"]
-        print(f"[watcher] IPFS pinned: {cid}")
-        return cid
+            timeout=30,
+        )
+        print(f"[watcher] Pinata response: {r.status_code} {r.text[:200]}")
+        resp = r.json()
+        cid = (
+            resp.get("data", {}).get("cid") or
+            resp.get("IpfsHash") or
+            resp.get("cid")
+        )
+        if cid:
+            print(f"[watcher] IPFS pinned: {cid}")
+            return cid
+        print("[watcher] IPFS pin failed — no CID in response")
+        return None
     except Exception as e:
         print(f"[watcher] IPFS failed: {e}")
         return None
@@ -453,56 +372,15 @@ def capture_market(market: dict, close_time: datetime) -> dict:
     market_id    = market.get("id", "unknown")
     data_sources = market.get("dataSources") or []
     outcomes     = meta.get("outcomes") or []
-    prompt_ctx   = (meta.get("model") or {}).get("prompt_context", "")
 
     print(f"\n[watcher] ═══════════════════════════════════════")
     print(f"[watcher] Capturing: {question[:70]}")
     print(f"[watcher] Sources: {data_sources}")
     print(f"[watcher] Outcomes: {outcomes}")
 
-    # Step 1: Classify
-    print(f"[watcher] Step 1: Classifying...")
-    classification = classify_market(question, prompt_ctx, data_sources)
-    print(f"[watcher] Type: {classification.get('market_type')} | "
-          f"Strategy: {classification.get('capture_strategy')} | "
-          f"Price: {classification.get('is_price_based')}")
-
-    # Step 2: Crypto price markets
-    price_data = []
-    if classification.get("is_price_based") and classification.get("asset"):
-        asset = classification["asset"]
-        capture_dates = resolve_capture_dates(classification, close_time)
-        print(f"[watcher] Step 2: Fetching {asset} prices for {[str(d) for d in capture_dates]}")
-        for date in capture_dates:
-            price_data.append(fetch_crypto_price_coingecko(asset, str(date)))
-
-        evidence_text = f"Asset: {asset}\n"
-        for p in price_data:
-            if p.get("close_usd"):
-                evidence_text += (
-                    f"Date: {p['date']} | Close: ${p['close_usd']:,.2f} | "
-                    f"High: ${p.get('high_usd','?')} | Low: ${p.get('low_usd','?')}\n"
-                )
-
-        verdict = extract_verdict(question, outcomes, evidence_text,
-                                  data_sources, "coingecko_historical")
-        print(f"[watcher] Price verdict: {verdict.get('matchedOutcome')} "
-              f"({verdict.get('confidence')})")
-
-        capture = {
-            "market_id": market_id, "market_question": question,
-            "close_time": close_time.isoformat(), "captured_at": now_iso(),
-            "classification": classification, "capture_strategy": "historical_price",
-            "price_data": price_data, "data_sources_used": ["CoinGecko"],
-            "verdict": verdict,
-            "capture_hash": sha256(json.dumps(price_data, sort_keys=True)),
-        }
-        capture["ipfs_cid"] = pin_to_ipfs(capture, f"oracle-seal-{market_id[:10]}")
-        save_to_supabase(market, capture)
-        return capture
-
-    # Step 3: Fetch from creator sources
-    print(f"[watcher] Step 3: Fetching from creator sources...")
+    # Step 1: Fetch from creator's listed sources ONLY.
+    # No crypto special case — evidence integrity should follow creator-specified sources.
+    print("[watcher] Step 1: Fetching from creator sources...")
     source_snapshots = []
     combined_evidence = ""
     best_method = None
@@ -515,36 +393,43 @@ def capture_market(market: dict, close_time: datetime) -> dict:
             best_method = snap.get("fetch_method", "direct")
             print(f"[watcher] Got evidence from {source} via {best_method}")
 
-    # Step 4: Last resort general Tavily
+    # Step 2: Last resort general Tavily, clearly flagged.
     source_warning = None
     if not combined_evidence:
-        print(f"[watcher] All sources failed — trying general Tavily")
+        print("[watcher] All sources failed — trying general Tavily")
         combined_evidence = search_tavily_general(question, close_time.isoformat())
         if combined_evidence:
             best_method = "general_tavily"
-            source_warning = f"WARNING: general web search used — source integrity not guaranteed"
-            print(f"[watcher] ⚠ Using general Tavily")
+            source_warning = "WARNING: general web search used — source integrity not guaranteed"
+            print("[watcher] ⚠ Using general Tavily")
 
-    # Step 5: Extract verdict
+    # Step 3: Extract verdict.
     if combined_evidence and outcomes:
-        print(f"[watcher] Step 5: Extracting verdict...")
-        verdict = extract_verdict(question, outcomes, combined_evidence,
-                                  data_sources, best_method or "unknown")
+        print("[watcher] Step 3: Extracting verdict...")
+        verdict = extract_verdict(
+            question, outcomes, combined_evidence,
+            data_sources, best_method or "unknown",
+        )
         print(f"[watcher] Verdict: {verdict.get('matchedOutcome')} ({verdict.get('confidence')})")
     else:
-        verdict = {"matchedOutcome": None, "confidence": 0,
-                   "explanation": f"Could not fetch: {data_sources}"}
-        print(f"[watcher] ✗ INCONCLUSIVE")
+        verdict = {
+            "matchedOutcome": None,
+            "confidence": 0,
+            "explanation": f"Could not fetch: {data_sources}",
+        }
+        print("[watcher] ✗ INCONCLUSIVE")
 
-    # Step 6: Build + save
+    # Step 4: Build + save.
     capture = {
-        "market_id": market_id, "market_question": question,
-        "close_time": close_time.isoformat(), "captured_at": now_iso(),
-        "classification": classification,
-        "capture_strategy": classification.get("capture_strategy", "at_close"),
-        "data_sources_listed": data_sources, "data_sources_fetched": source_snapshots,
-        "verdict": verdict,
-        "capture_hash": sha256(json.dumps(source_snapshots, sort_keys=True)),
+        "market_id":            market_id,
+        "market_question":      question,
+        "close_time":           close_time.isoformat(),
+        "captured_at":          now_iso(),
+        "capture_strategy":     "creator_sources",
+        "data_sources_listed":  data_sources,
+        "data_sources_fetched": source_snapshots,
+        "verdict":              verdict,
+        "capture_hash":         sha256(json.dumps(source_snapshots, sort_keys=True)),
     }
     if source_warning:
         capture["source_warning"] = source_warning
@@ -552,7 +437,7 @@ def capture_market(market: dict, close_time: datetime) -> dict:
     capture["ipfs_cid"] = pin_to_ipfs(capture, f"oracle-seal-{market_id[:10]}")
     save_to_supabase(market, capture)
     print(f"[watcher] Done: {market_id[:10]} → IPFS: {capture.get('ipfs_cid')}")
-    print(f"[watcher] ═══════════════════════════════════════\n")
+    print("[watcher] ═══════════════════════════════════════\n")
     return capture
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
