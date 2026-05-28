@@ -24,6 +24,7 @@ type Capture = {
   capture_source?: string
   ipfs_cid?: string
   evidence_hash?: string
+  raw_evidence?: string
   oracle_result?: string
   ree_receipt_hash?: string
   combined_hash?: string
@@ -407,10 +408,28 @@ export default function Home() {
                   <Row label="Captured at"    value={fmtDate(sel.captured_at)} color={C.green} />
                   <Row label="Source used"    value={sel.capture_source || "—"} />
                   <Row label="Evidence hash"  value={shortHash(sel.evidence_hash)} mono />
-                  <Row label="IPFS CID"       value={sel.ipfs_cid ? shortHash(sel.ipfs_cid) : "—"} mono
+                <Row label="IPFS CID"       value={sel.ipfs_cid ? shortHash(sel.ipfs_cid) : "—"} mono
                     link={sel.ipfs_cid ? `https://ipfs.io/ipfs/${sel.ipfs_cid}` : undefined}
                     color={sel.ipfs_cid ? C.green : undefined}
                   />
+                  {sel.raw_evidence && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1, marginBottom: 6 }}>
+                        CAPTURED EVIDENCE SNAPSHOT
+                      </div>
+                      <div style={{
+                        fontSize: 10, color: C.muted, lineHeight: 1.6,
+                        background: C.bg2, border: `1px solid ${C.border}`,
+                        borderRadius: 4, padding: "8px 10px",
+                        maxHeight: 120, overflowY: "auto",
+                        whiteSpace: "pre-wrap", wordBreak: "break-word",
+                        fontFamily: "'IBM Plex Mono', monospace",
+                      }}>
+                        {sel.raw_evidence.slice(0, 500)}
+                        {sel.raw_evidence.length > 500 ? "..." : ""}
+                      </div>
+                    </div>
+                  )}
                 </>
               ) : (
                 <div style={{ fontSize: 11, color: C.dim, padding: "8px 0" }}>

@@ -289,9 +289,9 @@ def save_to_supabase(market: dict, capture: dict) -> bool:
     sources     = market.get("dataSources") or []
     closes_at   = market.get("resolvesAt") or ""
 
-    # Get first fetched source domain
-    fetched = capture.get("data_sources_fetched") or []
-    capture_source = fetched[0].get("domain") if fetched else None
+capture_source = capture.get("best_source") or (
+        (capture.get("data_sources_fetched") or [{}])[0].get("domain")
+    )
     capture_method = capture.get("capture_strategy") or "at_close"
 
     row = {
@@ -306,6 +306,7 @@ def save_to_supabase(market: dict, capture: dict) -> bool:
         "capture_method": capture_method,
         "ipfs_cid":       capture.get("ipfs_cid"),
         "evidence_hash":  capture.get("capture_hash"),
+        "raw_evidence":   capture.get("raw_evidence"),
         "updated_at":     now_iso(),
     }
 
@@ -378,19 +379,27 @@ def capture_market(market: dict, close_time: datetime) -> dict:
     print(f"[watcher] Sources: {data_sources}")
     print(f"[watcher] Outcomes: {outcomes}")
 
-    # Step 1: Fetch from creator's listed sources ONLY.
-    # No crypto special case — evidence integrity should follow creator-specified sources.
+# Step 1: Fetch from creator's listed sources ONLY.
+    # Sort sources — try non-social media first for better evidence quality
     print("[watcher] Step 1: Fetching from creator sources...")
     source_snapshots = []
     combined_evidence = ""
     best_method = None
+    best_source = None
 
-    for source in data_sources[:3]:
+    social = {"x.com", "twitter", "x (twitter)", "x (", "reddit", "instagram"}
+    sorted_sources = sorted(
+        data_sources[:3],
+        key=lambda s: any(x in s.lower() for x in social)
+    )
+
+    for source in sorted_sources:
         snap = fetch_from_source(source, question, close_time.isoformat())
         source_snapshots.append(snap)
         if snap.get("text_snippet") and not combined_evidence:
             combined_evidence = snap["text_snippet"]
             best_method = snap.get("fetch_method", "direct")
+            best_source = snap.get("domain", source)
             print(f"[watcher] Got evidence from {source} via {best_method}")
 
     # Step 2: Last resort general Tavily, clearly flagged.
@@ -419,7 +428,7 @@ def capture_market(market: dict, close_time: datetime) -> dict:
         }
         print("[watcher] ✗ INCONCLUSIVE")
 
-    # Step 4: Build + save.
+# Step 4: Build + save.
     capture = {
         "market_id":            market_id,
         "market_question":      question,
@@ -428,7 +437,9 @@ def capture_market(market: dict, close_time: datetime) -> dict:
         "capture_strategy":     "creator_sources",
         "data_sources_listed":  data_sources,
         "data_sources_fetched": source_snapshots,
+        "best_source":          best_source,
         "verdict":              verdict,
+        "raw_evidence":         combined_evidence[:2000] if combined_evidence else None,
         "capture_hash":         sha256(json.dumps(source_snapshots, sort_keys=True)),
     }
     if source_warning:
