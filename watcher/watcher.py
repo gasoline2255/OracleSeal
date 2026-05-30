@@ -343,7 +343,7 @@ def pin_to_ipfs(data: dict, name: str) -> Optional[str]:
     if not PINATA_JWT:
         return None
     try:
-       r = requests.post(
+        r = requests.post(
             "https://uploads.pinata.cloud/v3/files",
             headers={"Authorization": f"Bearer {PINATA_JWT}"},
             files={"file": (f"{name}.json", json.dumps(data), "application/json")},
@@ -496,4 +496,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 
