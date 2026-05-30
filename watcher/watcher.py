@@ -289,7 +289,7 @@ def save_to_supabase(market: dict, capture: dict) -> bool:
     sources     = market.get("dataSources") or []
     closes_at   = market.get("resolvesAt") or ""
 
-capture_source = capture.get("best_source") or (
+    capture_source = capture.get("best_source") or (
         (capture.get("data_sources_fetched") or [{}])[0].get("domain")
     )
     capture_method = capture.get("capture_strategy") or "at_close"
@@ -496,3 +496,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
