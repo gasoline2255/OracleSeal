@@ -459,9 +459,9 @@ def main():
     markets = fetch_open_markets()
     now = now_utc()
 
-    # Wide window: 15 min back (catch missed) + 6 min forward
-    window_start = now - timedelta(minutes=15)
-    window_end   = now + timedelta(minutes=6)
+    # Wide window: 90 min back (handle GitHub Actions delays) + 10 min forward
+    window_start = now - timedelta(minutes=90)
+    window_end   = now + timedelta(minutes=10)
 
     to_capture = []
     captured_count = 0
