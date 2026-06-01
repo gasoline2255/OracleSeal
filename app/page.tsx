@@ -101,6 +101,11 @@ export default function Home() {
   const [captures, setCaptures] = useState<Capture[]>([])
   const [selected, setSelected] = useState<string | null>(null)
   const detailRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (selected && detailRef.current) {
+      detailRef.current.scrollTop = 0
+    }
+  }, [selected])
   const [filter,   setFilter]   = useState<string>("all")
   const [search,   setSearch]   = useState("")
   const [loading,  setLoading]  = useState(true)
@@ -307,10 +312,7 @@ export default function Home() {
               return (
                 <div
                   key={m.market_id}
-                  onClick={() => {
-                    setSelected(isSelected ? null : m.market_id)
-                    setTimeout(() => detailRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50)
-                  }}
+                  onClick={() => setSelected(isSelected ? null : m.market_id)}
                   style={{
                     padding: "14px 16px",
                     borderBottom: `1px solid ${C.border}`,
