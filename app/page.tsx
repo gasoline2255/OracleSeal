@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useRef } from "react"
 
 type Market = {
   id: string
@@ -100,6 +100,7 @@ export default function Home() {
   const [markets,  setMarkets]  = useState<Market[]>([])
   const [captures, setCaptures] = useState<Capture[]>([])
   const [selected, setSelected] = useState<string | null>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
   const [filter,   setFilter]   = useState<string>("all")
   const [search,   setSearch]   = useState("")
   const [loading,  setLoading]  = useState(true)
@@ -228,10 +229,16 @@ export default function Home() {
           { v: stats.captured, l: "Captures",         c: C.green },
           { v: stats.ree,      l: "REE Verified",     c: C.purple },
         ].map((s, i) => (
-          <div key={i} style={{
+          <div key={i} onClick={() => {
+            if (i === 1) setFilter("open")
+            else if (i === 2) setFilter("captured")
+            else if (i === 3) setFilter("ree_verified")
+            else setFilter("all")
+          }} style={{
             padding: "16px 24px",
             borderRight: i < 3 ? `1px solid ${C.border}` : "none",
             textAlign: "center",
+            cursor: "pointer",
           }}>
             <div style={{ fontSize: 26, fontWeight: 700, color: s.c, lineHeight: 1 }}>
               {loading ? "—" : s.v}
@@ -300,7 +307,10 @@ export default function Home() {
               return (
                 <div
                   key={m.market_id}
-                  onClick={() => setSelected(isSelected ? null : m.market_id)}
+                  onClick={() => {
+                    setSelected(isSelected ? null : m.market_id)
+                    setTimeout(() => detailRef.current?.scrollTo({ top: 0, behavior: 'smooth' }), 50)
+                  }}
                   style={{
                     padding: "14px 16px",
                     borderBottom: `1px solid ${C.border}`,
@@ -350,7 +360,7 @@ export default function Home() {
 
         {/* Right panel — market detail */}
         {sel && (
-          <div style={{
+          <div ref={detailRef} style={{
             flex: 1, overflowY: "auto", padding: 24,
             background: C.bg1,
           }}>
