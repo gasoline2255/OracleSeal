@@ -186,9 +186,10 @@ export default function Home() {
 
   return (
     <div style={{
-      minHeight: "100vh", background: C.bg, color: C.text,
+      height: "100vh", background: C.bg, color: C.text,
       fontFamily: "'IBM Plex Mono', 'Courier New', monospace",
       display: "flex", flexDirection: "column",
+      overflow: "hidden",
     }}>
       {/* Header */}
       <div style={{
